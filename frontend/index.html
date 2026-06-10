@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paper Reader</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,400;1,9..144,500&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <span class="wordmark">Paper&nbsp;<em>Reader</em></span>
+  <button id="newDocBtn" class="ghost-btn hidden" type="button">New paper</button>
+</header>
+
+<!-- Upload view -->
+<main id="uploadView" class="upload-view">
+  <section class="hero">
+    <h1>Listen to your<br><em>papers.</em></h1>
+    <p class="hero-sub">Drop in a PDF and read along as it's spoken aloud,<br>one highlighted phrase at a time.</p>
+  </section>
+
+  <div id="dropZone" class="drop-zone" tabindex="0" role="button"
+       aria-label="Upload a PDF: drop a file here or press Enter to browse">
+    <svg class="drop-glyph" viewBox="0 0 48 48" aria-hidden="true">
+      <path d="M14 6h14l8 8v28a2 2 0 0 1-2 2H14a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z"
+            fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/>
+      <path d="M28 6v8h8" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/>
+      <path d="M18 30h12M18 36h8" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+    </svg>
+    <p class="drop-title">Drop a PDF here</p>
+    <p class="drop-sub">or <span class="link-text">browse your files</span></p>
+    <input type="file" id="fileInput" accept="application/pdf,.pdf" hidden>
+  </div>
+
+  <div id="uploadStatus" class="upload-status" aria-live="polite"></div>
+</main>
+
+<!-- Reader view -->
+<main id="readerView" class="reader-view hidden">
+  <article class="paper">
+    <h1 id="docTitle" class="doc-title"></h1>
+    <div id="docBody" class="doc-body"></div>
+    <p class="paper-end">⁂</p>
+  </article>
+</main>
+
+<!-- Player -->
+<footer id="playerBar" class="player hidden">
+  <button id="playBtn" class="play-btn" type="button" aria-label="Play">
+    <svg id="iconPlay" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>
+    <svg id="iconPause" class="hidden" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg>
+  </button>
+
+  <div class="progress-wrap">
+    <div class="progress-track"><div id="progressFill" class="progress-fill"></div></div>
+    <span id="progressLabel" class="progress-label"></span>
+  </div>
+
+  <label class="ctrl">
+    <span class="ctrl-label">Speed</span>
+    <select id="rateSelect">
+      <option value="0.75">0.75×</option>
+      <option value="1" selected>1×</option>
+      <option value="1.25">1.25×</option>
+      <option value="1.5">1.5×</option>
+      <option value="1.75">1.75×</option>
+      <option value="2">2×</option>
+    </select>
+  </label>
+
+  <label class="ctrl ctrl-voice">
+    <span class="ctrl-label">Voice</span>
+    <select id="voiceSelect"></select>
+  </label>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
