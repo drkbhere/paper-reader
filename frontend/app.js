@@ -507,17 +507,20 @@ function populateVoices() {
 
   const previous = state.voice?.voiceURI || localStorage.getItem("pr-voice");
   voiceSelect.innerHTML = "";
-  let chosen = false;
-  list.forEach((v, i) => {
+  list.forEach((v) => {
     const opt = document.createElement("option");
     opt.value = v.voiceURI;
     opt.textContent = `${v.name}${v.localService ? "" : " (online)"}`;
     voiceSelect.appendChild(opt);
-    if (v.voiceURI === previous || (!chosen && !previous && i === 0)) {
-      state.voice = v; opt.selected = true; chosen = true;
-    }
   });
-  if (!chosen && list.length) { state.voice = list[0]; voiceSelect.selectedIndex = 0; }
+  // Prefer higher-quality defaults: premium/enhanced if exposed, else Samantha.
+  const fallback =
+    list.find((v) => /premium|enhanced/i.test(v.name)) ||
+    list.find((v) => /^samantha/i.test(v.name)) ||
+    list.find((v) => v.lang.toLowerCase() === "en-us") ||
+    list[0];
+  state.voice = list.find((v) => v.voiceURI === previous) || fallback;
+  voiceSelect.value = state.voice.voiceURI;
 
   voiceSelect.onchange = () => {
     const all = speechSynthesis.getVoices();
