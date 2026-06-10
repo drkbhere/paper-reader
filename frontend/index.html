@@ -13,10 +13,13 @@
 
 <header class="topbar">
   <span class="wordmark">Paper&nbsp;<em>Reader</em></span>
-  <button id="newDocBtn" class="ghost-btn hidden" type="button">New paper</button>
+  <div class="topbar-actions">
+    <button id="exportBtn" class="ghost-btn hidden" type="button">Export audio</button>
+    <button id="libraryBtn" class="ghost-btn hidden" type="button">Library</button>
+  </div>
 </header>
 
-<!-- Upload view -->
+<!-- Home: upload + library -->
 <main id="uploadView" class="upload-view">
   <section class="hero">
     <h1>Listen to your<br><em>papers.</em></h1>
@@ -37,10 +40,23 @@
   </div>
 
   <div id="uploadStatus" class="upload-status" aria-live="polite"></div>
+
+  <section id="librarySection" class="library hidden">
+    <h2 class="library-title">Your library</h2>
+    <ul id="libraryList" class="library-list"></ul>
+  </section>
 </main>
 
-<!-- Reader view -->
+<!-- Reader -->
 <main id="readerView" class="reader-view hidden">
+  <aside id="tocPanel" class="toc-panel">
+    <p class="toc-heading">Contents</p>
+    <nav id="tocList" class="toc-list"></nav>
+    <label class="toc-toggle">
+      <input type="checkbox" id="skipRefsToggle" checked>
+      <span>Skip references</span>
+    </label>
+  </aside>
   <article class="paper">
     <h1 id="docTitle" class="doc-title"></h1>
     <div id="docBody" class="doc-body"></div>
@@ -77,6 +93,27 @@
     <select id="voiceSelect"></select>
   </label>
 </footer>
+
+<!-- Export dialog -->
+<div id="exportModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="exportTitle">
+  <div class="modal-card">
+    <h2 id="exportTitle">Export audio</h2>
+    <p class="modal-sub">Renders this paper to an M4A file with your Mac's voices.</p>
+    <label class="modal-field">
+      <span>Voice</span>
+      <select id="exportVoiceSelect"></select>
+    </label>
+    <label class="modal-check">
+      <input type="checkbox" id="exportSkipRefs" checked>
+      <span>Skip the references section</span>
+    </label>
+    <div class="modal-actions">
+      <button id="exportCancelBtn" class="ghost-btn dark" type="button">Close</button>
+      <button id="exportStartBtn" class="primary-btn" type="button">Start export</button>
+    </div>
+    <p id="exportStatus" class="export-status" aria-live="polite"></p>
+  </div>
+</div>
 
 <script src="app.js"></script>
 </body>

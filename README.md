@@ -48,8 +48,19 @@ python3 -m venv .venv
 - **Synchronized highlighting**: the Web Speech API's `onboundary` events map the
   spoken word onto pre-built `<span>`s — the current word plus two words on each
   side are highlighted as audio plays.
-- **Click-to-seek**: click any sentence to start reading from there.
-- **Speed (0.75–2×) and voice** selection from your system's installed voices.
+- **Click-to-seek**: click any sentence to start reading from there; arrow keys
+  skip a sentence back/forward, space toggles play.
+- **Library with resume**: uploaded papers persist (in
+  `~/Library/Application Support/Paper Reader`) and reopen at the sentence
+  where you stopped.
+- **Contents sidebar** built from detected headings, with current-section
+  tracking and click-to-jump.
+- **Skip references**: the references section is dimmed and skipped during
+  playback (toggleable).
+- **Audio export**: render any paper to an M4A file via macOS `say`, with a
+  voice picker — listen on your phone or in a podcast app.
+- **Speed (0.75–2×) and voice** selection from your system's installed voices,
+  remembered between sessions.
 - **Auto-scroll** follows the highlight, and politely backs off for 4 seconds
   whenever you scroll manually.
 
@@ -74,7 +85,6 @@ resuming restarts the current sentence.
 
 ## Notes & limitations
 
-- Single document, in-memory: nothing is stored; closing the app forgets the paper.
 - Scanned (image-only) PDFs are rejected with a clear message — no OCR yet.
 - The packaged app is ad-hoc signed, not notarized — hence the right-click → Open
   on first launch. An Apple Developer ID would remove that step.

@@ -1,4 +1,4 @@
-/* Paper Reader — upload, render, and speech-synchronized highlighting.
+/* Paper Reader — library, render, speech-synchronized highlighting, export.
  *
  * Playback model: the document is split into "segments" (sentences, with very
  * long ones chunked at clause boundaries). One SpeechSynthesisUtterance per
@@ -13,27 +13,39 @@ const $ = (id) => document.getElementById(id);
 const uploadView = $("uploadView"), readerView = $("readerView");
 const dropZone = $("dropZone"), fileInput = $("fileInput");
 const uploadStatus = $("uploadStatus");
+const librarySection = $("librarySection"), libraryList = $("libraryList");
 const docTitle = $("docTitle"), docBody = $("docBody");
+const tocList = $("tocList"), skipRefsToggle = $("skipRefsToggle");
 const playerBar = $("playerBar"), playBtn = $("playBtn");
 const iconPlay = $("iconPlay"), iconPause = $("iconPause");
 const progressFill = $("progressFill"), progressLabel = $("progressLabel");
 const rateSelect = $("rateSelect"), voiceSelect = $("voiceSelect");
-const newDocBtn = $("newDocBtn");
+const libraryBtn = $("libraryBtn"), exportBtn = $("exportBtn");
+const exportModal = $("exportModal"), exportVoiceSelect = $("exportVoiceSelect");
+const exportSkipRefs = $("exportSkipRefs"), exportStatus = $("exportStatus");
+const exportStartBtn = $("exportStartBtn"), exportCancelBtn = $("exportCancelBtn");
 
 // ---------- state ----------
 const state = {
-  segments: [],     // {text, el, words: [{start, end, el}]}
+  paperId: null,
+  segments: [],     // {text, el, words: [{start, end, el}], isRef}
+  toc: [],          // {text, segIdx, el}
   segIdx: 0,
   status: "idle",   // idle | playing | paused
-  rate: 1,
+  rate: Number(localStorage.getItem("pr-rate")) || 1,
   voice: null,
+  skipRefs: localStorage.getItem("pr-skiprefs") !== "0",
   gen: 0,           // generation token: invalidates stale utterance callbacks
   lit: [],          // word spans currently highlighted
   liveSeg: null,
 };
 
 const CHUNK_RADIUS = 2;        // words on each side of the spoken word
-const MAX_SEGMENT_CHARS = 280; // Chrome's engine dies on long utterances
+const MAX_SEGMENT_CHARS = 280; // speech engines die on long utterances
+const REFS_RE = /^(references|bibliography)\b/i;
+
+const posKey = (id) => `pr-pos-${id}`;
+const totalKey = (id) => `pr-total-${id}`;
 
 // ---------- upload ----------
 
@@ -75,6 +87,7 @@ async function handleFile(file) {
     showUploadError(body?.detail || `Upload failed (HTTP ${res.status}).`);
     return;
   }
+  uploadStatus.innerHTML = "";
   enterReader(await res.json());
 }
 
@@ -85,6 +98,71 @@ function showUploadError(msg) {
 function escapeHtml(s) {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
+
+// ---------- library ----------
+
+async function loadLibrary() {
+  let papers = [];
+  try {
+    papers = await (await fetch("/papers")).json();
+  } catch { return; }
+  librarySection.classList.toggle("hidden", papers.length === 0);
+  libraryList.innerHTML = "";
+  for (const p of papers) {
+    const pos = Number(localStorage.getItem(posKey(p.id))) || 0;
+    const total = Number(localStorage.getItem(totalKey(p.id))) || 0;
+    const pct = total ? Math.round((pos / total) * 100) : 0;
+
+    const li = document.createElement("li");
+    li.className = "library-item";
+
+    const main = document.createElement("button");
+    main.type = "button";
+    main.className = "library-open";
+    const t = document.createElement("span");
+    t.className = "library-name";
+    t.textContent = p.title;
+    const sub = document.createElement("span");
+    sub.className = "library-meta";
+    sub.textContent = `${new Date(p.added * 1000).toLocaleDateString()}${total ? ` · ${pct}% read` : ""}`;
+    const bar = document.createElement("span");
+    bar.className = "library-bar";
+    const fill = document.createElement("span");
+    fill.className = "library-bar-fill";
+    fill.style.width = `${pct}%`;
+    bar.appendChild(fill);
+    main.append(t, sub, bar);
+    main.addEventListener("click", () => openPaper(p.id));
+
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "library-delete";
+    del.setAttribute("aria-label", `Remove ${p.title}`);
+    del.textContent = "✕";
+    del.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      await fetch(`/papers/${p.id}`, { method: "DELETE" });
+      localStorage.removeItem(posKey(p.id));
+      localStorage.removeItem(totalKey(p.id));
+      loadLibrary();
+    });
+
+    li.append(main, del);
+    libraryList.appendChild(li);
+  }
+}
+
+async function openPaper(id) {
+  const res = await fetch(`/papers/${id}`);
+  if (!res.ok) { loadLibrary(); return; }
+  enterReader(await res.json());
+}
+
+libraryBtn.addEventListener("click", () => {
+  state.gen++;
+  speechSynthesis.cancel();
+  location.reload();
+});
 
 // ---------- sentence segmentation ----------
 
@@ -111,7 +189,7 @@ function splitSentences(text) {
 }
 
 // Split an over-long "sentence" at clause boundaries so no utterance exceeds
-// MAX_SEGMENT_CHARS (Chrome silently stops speaking very long utterances).
+// MAX_SEGMENT_CHARS (engines silently stop on very long utterances).
 function chunkLong(s) {
   if (s.length <= MAX_SEGMENT_CHARS) return [s];
   const window = s.slice(0, MAX_SEGMENT_CHARS - 40);
@@ -129,27 +207,42 @@ function enterReader(doc) {
   uploadView.classList.add("hidden");
   readerView.classList.remove("hidden");
   playerBar.classList.remove("hidden");
-  newDocBtn.classList.remove("hidden");
+  libraryBtn.classList.remove("hidden");
+  exportBtn.classList.remove("hidden");
   document.title = `${doc.title} — Paper Reader`;
   docTitle.textContent = doc.title;
+  state.paperId = doc.id;
 
+  let inRefs = false;
   for (const block of doc.blocks) {
     const el = document.createElement(block.type === "heading" ? "h2" : "p");
+    if (block.type === "heading") inRefs = REFS_RE.test(block.text);
     const sentences = block.type === "heading" ? [block.text] : splitSentences(block.text);
     sentences.forEach((sent, i) => {
-      el.appendChild(buildSegment(sent));
+      const segEl = buildSegment(sent, inRefs, block.type === "heading");
+      el.appendChild(segEl);
       if (i < sentences.length - 1) el.appendChild(document.createTextNode(" "));
     });
     docBody.appendChild(el);
+  }
+  buildToc();
+  applySkipRefs();
+
+  localStorage.setItem(totalKey(doc.id), String(state.segments.length));
+  const saved = Number(localStorage.getItem(posKey(doc.id))) || 0;
+  if (saved > 0 && saved < state.segments.length) {
+    state.segIdx = saved;
+    setLiveSegment(state.segments[saved]);
+    setTimeout(() => state.segments[saved].el.scrollIntoView({ block: "center" }), 80);
   }
   updateProgress();
 }
 
 // Build one segment: a <span class="seg"> whose words are individually wrapped
 // so onboundary charIndexes can be mapped to DOM nodes.
-function buildSegment(text) {
+function buildSegment(text, isRef, isHeading) {
   const segEl = document.createElement("span");
-  segEl.className = "seg";
+  segEl.className = "seg" + (isRef ? " ref" : "");
   segEl.dataset.seg = state.segments.length;
 
   const words = [];
@@ -166,8 +259,34 @@ function buildSegment(text) {
   }
   if (last < text.length) segEl.appendChild(document.createTextNode(text.slice(last)));
 
-  state.segments.push({ text, el: segEl, words });
+  if (isHeading) {
+    state.toc.push({ text, segIdx: state.segments.length, el: null });
+  }
+  state.segments.push({ text, el: segEl, words, isRef });
   return segEl;
+}
+
+function buildToc() {
+  tocList.innerHTML = "";
+  for (const entry of state.toc) {
+    const a = document.createElement("button");
+    a.type = "button";
+    a.className = "toc-entry";
+    a.textContent = entry.text;
+    a.addEventListener("click", () => seekTo(entry.segIdx));
+    entry.el = a;
+    tocList.appendChild(a);
+  }
+  document.getElementById("tocPanel").classList.toggle("hidden", state.toc.length === 0);
+}
+
+function updateTocCurrent() {
+  let current = null;
+  for (const entry of state.toc) {
+    if (entry.segIdx <= state.segIdx) current = entry;
+    entry.el.classList.remove("current");
+  }
+  current?.el.classList.add("current");
 }
 
 // Click a sentence to jump there.
@@ -176,6 +295,24 @@ docBody.addEventListener("click", (e) => {
   if (!segEl) return;
   seekTo(Number(segEl.dataset.seg));
 });
+
+// ---------- skip references ----------
+
+skipRefsToggle.checked = state.skipRefs;
+skipRefsToggle.addEventListener("change", () => {
+  state.skipRefs = skipRefsToggle.checked;
+  localStorage.setItem("pr-skiprefs", state.skipRefs ? "1" : "0");
+  applySkipRefs();
+});
+
+function applySkipRefs() {
+  docBody.classList.toggle("skip-refs", state.skipRefs);
+}
+
+function nextPlayable(i) {
+  while (i < state.segments.length && state.skipRefs && state.segments[i].isRef) i++;
+  return i;
+}
 
 // ---------- speech ----------
 
@@ -196,12 +333,12 @@ function speakFrom(i) {
   };
   u.onend = () => {
     if (gen !== state.gen || state.status !== "playing") return;
-    speakFrom(i + 1);
+    speakFrom(nextPlayable(i + 1));
   };
   u.onerror = (e) => {
     if (gen !== state.gen) return;
     if (e.error === "canceled" || e.error === "interrupted") return;
-    if (state.status === "playing") speakFrom(i + 1); // skip a segment the engine rejects
+    if (state.status === "playing") speakFrom(nextPlayable(i + 1)); // skip a segment the engine rejects
   };
 
   setLiveSegment(seg);
@@ -214,17 +351,18 @@ function play() {
   state.status = "playing";
   updatePlayBtn();
   speechSynthesis.cancel();
-  // Chrome needs a beat after cancel() before speak() registers reliably.
+  // WebKit/Chrome need a beat after cancel() before speak() registers reliably.
   setTimeout(() => { if (state.status === "playing") speakFrom(state.segIdx); }, 60);
 }
 
-// Native speechSynthesis.pause() hangs with some Chrome voices, so pause is
+// Native speechSynthesis.pause() hangs with some voices, so pause is
 // cancel + remembered position; resume restarts the current sentence.
 function pause() {
   state.status = "paused";
   state.gen++;
   speechSynthesis.cancel();
   updatePlayBtn();
+  savePosition();
 }
 
 function finishPlayback() {
@@ -258,10 +396,17 @@ function restartCurrentSegment() {
 playBtn.addEventListener("click", () => (state.status === "playing" ? pause() : play()));
 
 document.addEventListener("keydown", (e) => {
-  if (e.code !== "Space" || readerView.classList.contains("hidden")) return;
-  if (e.target !== document.body) return;
-  e.preventDefault();
-  state.status === "playing" ? pause() : play();
+  if (readerView.classList.contains("hidden") || e.target !== document.body) return;
+  if (e.code === "Space") {
+    e.preventDefault();
+    state.status === "playing" ? pause() : play();
+  } else if (e.code === "ArrowRight") {
+    e.preventDefault();
+    seekTo(Math.min(nextPlayable(state.segIdx + 1), state.segments.length - 1));
+  } else if (e.code === "ArrowLeft") {
+    e.preventDefault();
+    seekTo(Math.max(state.segIdx - 1, 0));
+  }
 });
 
 function updatePlayBtn() {
@@ -280,6 +425,7 @@ function setLiveSegment(seg) {
     seg.el.classList.add("live");
     maybeAutoScroll(seg.el);
   }
+  updateTocCurrent();
 }
 
 function highlightWordAt(seg, charIndex) {
@@ -323,19 +469,26 @@ function maybeAutoScroll(el) {
   }
 }
 
-// ---------- progress ----------
+// ---------- progress & resume ----------
+
+function savePosition() {
+  if (state.paperId) localStorage.setItem(posKey(state.paperId), String(state.segIdx));
+}
 
 function updateProgress() {
   const total = state.segments.length;
   const done = state.status === "idle" && state.segIdx === 0 ? 0 : state.segIdx;
   progressFill.style.width = total ? `${(done / total) * 100}%` : "0%";
   progressLabel.textContent = total ? `sentence ${Math.min(done + 1, total)} of ${total}` : "";
+  savePosition();
 }
 
 // ---------- rate & voice ----------
 
+rateSelect.value = String(state.rate);
 rateSelect.addEventListener("change", () => {
   state.rate = Number(rateSelect.value);
+  localStorage.setItem("pr-rate", rateSelect.value);
   restartCurrentSegment();
 });
 
@@ -352,19 +505,24 @@ function populateVoices() {
   const list = (english.length ? english : voices)
     .sort((a, b) => Number(b.localService) - Number(a.localService));
 
-  const previous = state.voice?.voiceURI;
+  const previous = state.voice?.voiceURI || localStorage.getItem("pr-voice");
   voiceSelect.innerHTML = "";
+  let chosen = false;
   list.forEach((v, i) => {
     const opt = document.createElement("option");
     opt.value = v.voiceURI;
     opt.textContent = `${v.name}${v.localService ? "" : " (online)"}`;
     voiceSelect.appendChild(opt);
-    if (v.voiceURI === previous || (!previous && i === 0)) { state.voice = v; opt.selected = true; }
+    if (v.voiceURI === previous || (!chosen && !previous && i === 0)) {
+      state.voice = v; opt.selected = true; chosen = true;
+    }
   });
+  if (!chosen && list.length) { state.voice = list[0]; voiceSelect.selectedIndex = 0; }
 
   voiceSelect.onchange = () => {
     const all = speechSynthesis.getVoices();
     state.voice = all.find((v) => v.voiceURI === voiceSelect.value) || null;
+    localStorage.setItem("pr-voice", voiceSelect.value);
     restartCurrentSegment();
   };
 }
@@ -372,11 +530,84 @@ function populateVoices() {
 populateVoices();
 speechSynthesis.addEventListener?.("voiceschanged", populateVoices);
 
-// ---------- misc ----------
+// ---------- export ----------
 
-newDocBtn.addEventListener("click", () => {
-  speechSynthesis.cancel();
-  location.reload();
+let exportVoicesLoaded = false;
+let exportPolling = null;
+
+exportBtn.addEventListener("click", async () => {
+  exportModal.classList.remove("hidden");
+  exportSkipRefs.checked = state.skipRefs;
+  exportStatus.textContent = "";
+  if (!exportVoicesLoaded) {
+    try {
+      const voices = await (await fetch("/voices")).json();
+      exportVoiceSelect.innerHTML = "";
+      const preferred = localStorage.getItem("pr-export-voice");
+      for (const v of voices) {
+        const opt = document.createElement("option");
+        opt.value = v.name;
+        opt.textContent = `${v.name} (${v.lang.replace("_", "-")})`;
+        if (v.name === preferred) opt.selected = true;
+        exportVoiceSelect.appendChild(opt);
+      }
+      exportVoicesLoaded = voices.length > 0;
+    } catch { /* leave the list empty; export uses the system default voice */ }
+  }
 });
 
+exportCancelBtn.addEventListener("click", closeExportModal);
+exportModal.addEventListener("click", (e) => { if (e.target === exportModal) closeExportModal(); });
+
+function closeExportModal() {
+  exportModal.classList.add("hidden");
+  clearInterval(exportPolling);
+  exportPolling = null;
+}
+
+exportStartBtn.addEventListener("click", async () => {
+  if (!state.paperId) return;
+  const voice = exportVoiceSelect.value || null;
+  if (voice) localStorage.setItem("pr-export-voice", voice);
+  exportStartBtn.disabled = true;
+  exportStatus.textContent = "Rendering audio… this can take a few minutes for long papers.";
+  try {
+    await fetch(`/papers/${state.paperId}/export`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ voice, skip_references: exportSkipRefs.checked }),
+    });
+  } catch {
+    exportStatus.textContent = "Could not start the export.";
+    exportStartBtn.disabled = false;
+    return;
+  }
+  exportPolling = setInterval(async () => {
+    let st;
+    try {
+      st = await (await fetch(`/papers/${state.paperId}/export/status`)).json();
+    } catch { return; }
+    if (st.status === "done") {
+      clearInterval(exportPolling);
+      exportPolling = null;
+      exportStartBtn.disabled = false;
+      exportStatus.innerHTML = "";
+      const link = document.createElement("a");
+      link.href = `/papers/${state.paperId}/audio`;
+      link.className = "download-link";
+      link.textContent = "Download M4A";
+      exportStatus.append("Done — ", link);
+    } else if (st.status === "error") {
+      clearInterval(exportPolling);
+      exportPolling = null;
+      exportStartBtn.disabled = false;
+      exportStatus.textContent = `Export failed: ${st.error || "unknown error"}`;
+    }
+  }, 1500);
+});
+
+// ---------- misc ----------
+
 window.addEventListener("beforeunload", () => speechSynthesis.cancel());
+
+loadLibrary();
