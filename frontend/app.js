@@ -613,4 +613,8 @@ exportStartBtn.addEventListener("click", async () => {
 
 window.addEventListener("beforeunload", () => speechSynthesis.cancel());
 
+// Heartbeat: in desktop (Chrome app window) mode the embedded server exits
+// once these stop arriving. Harmless when running against a dev server.
+setInterval(() => fetch("/ping", { method: "POST" }).catch(() => {}), 3000);
+
 loadLibrary();

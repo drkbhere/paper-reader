@@ -2,6 +2,7 @@
 
 import re
 import sys
+import time
 from pathlib import Path
 
 from fastapi import Body, FastAPI, File, HTTPException, UploadFile
@@ -16,6 +17,17 @@ MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 
 app = FastAPI(title="Paper Reader")
 store = PaperStore()
+
+# Heartbeat from the frontend; desktop.py watches this to know when the
+# Chrome app window has been closed.
+last_ping = 0.0
+
+
+@app.post("/ping")
+def ping():
+    global last_ping
+    last_ping = time.time()
+    return {"ok": True}
 
 
 @app.post("/upload")

@@ -48,6 +48,11 @@ Data lives in `~/Library/Application Support/Paper Reader/` (override with
   stale utterance callbacks after cancel/seek.
 - **WKWebView quirks**: word boundaries DO fire (verified); `getVoices()` is
   lazily populated and `voiceschanged` is unreliable → the frontend retry-polls.
+  WebKit exposes only a curated legacy voice list to web content (premium/
+  enhanced voices hidden, anti-fingerprinting) — that's why desktop.py prefers
+  a Chrome `--app=` window when Chrome is installed: Chrome sees all system
+  voices. Lifetime in Chrome mode = heartbeat (`POST /ping` every 3s from
+  app.js; server exits after 45s of silence). WKWebView is the fallback.
 - **Skip references** exists in BOTH layers: frontend (segment `isRef`, skipped
   during auto-advance only) and backend export (`drop_references`). Keep the
   regexes in sync (`^(references|bibliography)\b`, case-insensitive).
