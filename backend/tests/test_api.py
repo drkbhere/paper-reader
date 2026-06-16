@@ -140,3 +140,14 @@ def test_export_renders_audio():
     assert audio.status_code == 200
     assert audio.headers["content-type"] == "audio/mp4"
     assert len(audio.content) > 10_000
+
+
+def test_export_text_simplifies_citations_when_enabled():
+    blocks = [{"type": "paragraph", "text": "Loyalty rose (Kumar, 2021)."}]
+    assert "(Kumar)" in export_text("T", blocks, simplify=True)
+    assert "(Kumar, 2021)" not in export_text("T", blocks, simplify=True)
+
+
+def test_export_text_keeps_citations_when_disabled():
+    blocks = [{"type": "paragraph", "text": "Loyalty rose (Kumar, 2021)."}]
+    assert "(Kumar, 2021)" in export_text("T", blocks, simplify=False)

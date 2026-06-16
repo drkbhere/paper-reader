@@ -10,6 +10,8 @@ import tempfile
 import threading
 from pathlib import Path
 
+from .textclean import simplify_citations
+
 REFERENCES_RE = re.compile(r"^(references|bibliography)\b", re.I)
 HEADING_PAUSE = "[[slnc 700]]"    # `say` embedded-command: pause before a heading
 PARAGRAPH_PAUSE = "[[slnc 300]]"
@@ -47,13 +49,14 @@ def drop_references(blocks: list[dict]) -> list[dict]:
     return out
 
 
-def export_text(title: str, blocks: list[dict]) -> str:
+def export_text(title: str, blocks: list[dict], simplify: bool = True) -> str:
     parts = [title, PARAGRAPH_PAUSE]
     for b in blocks:
         if b["type"] == "heading":
             parts.append(f"{HEADING_PAUSE} {b['text']} {PARAGRAPH_PAUSE}")
         else:
-            parts.append(f"{b['text']} {PARAGRAPH_PAUSE}")
+            text = simplify_citations(b["text"]) if simplify else b["text"]
+            parts.append(f"{text} {PARAGRAPH_PAUSE}")
     return "\n".join(parts)
 
 
@@ -63,7 +66,8 @@ def job_status(pid: str) -> dict:
 
 
 def start_export(pid: str, title: str, blocks: list[dict], out_path: Path,
-                 voice: str | None = None, skip_references: bool = True) -> bool:
+                 voice: str | None = None, skip_references: bool = True,
+                 simplify_citations: bool = True) -> bool:
     """Kick off a render; returns False if one is already running for this paper."""
     with _lock:
         if _jobs.get(pid, {}).get("status") == "running":
@@ -75,7 +79,7 @@ def start_export(pid: str, title: str, blocks: list[dict], out_path: Path,
             content = blocks
             if skip_references:
                 content = drop_references(blocks)
-            text = export_text(title, content)
+            text = export_text(title, content, simplify=simplify_citations)
             with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as tf:
                 tf.write(text)
                 src = tf.name
