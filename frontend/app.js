@@ -16,6 +16,7 @@ const uploadStatus = $("uploadStatus");
 const librarySection = $("librarySection"), libraryList = $("libraryList");
 const docTitle = $("docTitle"), docBody = $("docBody");
 const tocList = $("tocList"), skipRefsToggle = $("skipRefsToggle");
+const simplifyToggle = $("simplifyToggle");
 const playerBar = $("playerBar"), playBtn = $("playBtn");
 const iconPlay = $("iconPlay"), iconPause = $("iconPause");
 const progressFill = $("progressFill"), progressLabel = $("progressLabel");
@@ -23,6 +24,7 @@ const rateSelect = $("rateSelect"), voiceSelect = $("voiceSelect");
 const libraryBtn = $("libraryBtn"), exportBtn = $("exportBtn");
 const exportModal = $("exportModal"), exportVoiceSelect = $("exportVoiceSelect");
 const exportSkipRefs = $("exportSkipRefs"), exportStatus = $("exportStatus");
+const exportSimplify = $("exportSimplify");
 const exportStartBtn = $("exportStartBtn"), exportCancelBtn = $("exportCancelBtn");
 
 // ---------- state ----------
@@ -35,6 +37,8 @@ const state = {
   rate: Number(localStorage.getItem("pr-rate")) || 1,
   voice: null,
   skipRefs: localStorage.getItem("pr-skiprefs") !== "0",
+  simplifyCites: localStorage.getItem("pr-simplify") !== "0",
+  blocks: [],       // raw blocks from the API, for re-render on toggle
   gen: 0,           // generation token: invalidates stale utterance callbacks
   lit: [],          // word spans currently highlighted
   liveSeg: null,
@@ -213,11 +217,27 @@ function enterReader(doc) {
   docTitle.textContent = doc.title;
   state.paperId = doc.id;
 
+  state.blocks = doc.blocks;
+  renderDocument();
+}
+
+// Build (or rebuild) the document body from state.blocks using the current
+// simplify-citations preference. Safe to call repeatedly (toggle re-render).
+function renderDocument() {
+  docBody.innerHTML = "";
+  state.segments = [];
+  state.toc = [];
+  state.lit = [];
+  state.liveSeg = null;
+
   let inRefs = false;
-  for (const block of doc.blocks) {
+  for (const block of state.blocks) {
     const el = document.createElement(block.type === "heading" ? "h2" : "p");
     if (block.type === "heading") inRefs = REFS_RE.test(block.text);
-    const sentences = block.type === "heading" ? [block.text] : splitSentences(block.text);
+    const source = state.simplifyCites && block.text_simplified != null
+      ? block.text_simplified
+      : block.text;
+    const sentences = block.type === "heading" ? [source] : splitSentences(source);
     sentences.forEach((sent, i) => {
       const segEl = buildSegment(sent, inRefs, block.type === "heading");
       el.appendChild(segEl);
@@ -228,8 +248,8 @@ function enterReader(doc) {
   buildToc();
   applySkipRefs();
 
-  localStorage.setItem(totalKey(doc.id), String(state.segments.length));
-  const saved = Number(localStorage.getItem(posKey(doc.id))) || 0;
+  localStorage.setItem(totalKey(state.paperId), String(state.segments.length));
+  const saved = Number(localStorage.getItem(posKey(state.paperId))) || 0;
   if (saved > 0 && saved < state.segments.length) {
     state.segIdx = saved;
     setLiveSegment(state.segments[saved]);
@@ -303,6 +323,20 @@ skipRefsToggle.addEventListener("change", () => {
   state.skipRefs = skipRefsToggle.checked;
   localStorage.setItem("pr-skiprefs", state.skipRefs ? "1" : "0");
   applySkipRefs();
+});
+
+simplifyToggle.checked = state.simplifyCites;
+simplifyToggle.addEventListener("change", () => {
+  state.simplifyCites = simplifyToggle.checked;
+  localStorage.setItem("pr-simplify", state.simplifyCites ? "1" : "0");
+  const keep = state.segIdx;
+  state.gen++;
+  speechSynthesis.cancel();
+  if (state.status === "playing") { state.status = "paused"; updatePlayBtn(); }
+  renderDocument();
+  state.segIdx = Math.min(keep, state.segments.length - 1);
+  if (state.segIdx > 0) setLiveSegment(state.segments[state.segIdx]);
+  updateProgress();
 });
 
 function applySkipRefs() {
@@ -541,6 +575,7 @@ let exportPolling = null;
 exportBtn.addEventListener("click", async () => {
   exportModal.classList.remove("hidden");
   exportSkipRefs.checked = state.skipRefs;
+  exportSimplify.checked = state.simplifyCites;
   exportStatus.textContent = "";
   if (!exportVoicesLoaded) {
     try {
@@ -578,7 +613,11 @@ exportStartBtn.addEventListener("click", async () => {
     await fetch(`/papers/${state.paperId}/export`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ voice, skip_references: exportSkipRefs.checked }),
+      body: JSON.stringify({
+        voice,
+        skip_references: exportSkipRefs.checked,
+        simplify_citations: exportSimplify.checked,
+      }),
     });
   } catch {
     exportStatus.textContent = "Could not start the export.";
