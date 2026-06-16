@@ -56,6 +56,14 @@ Data lives in `~/Library/Application Support/Paper Reader/` (override with
 - **Skip references** exists in BOTH layers: frontend (segment `isRef`, skipped
   during auto-advance only) and backend export (`drop_references`). Keep the
   regexes in sync (`^(references|bibliography)\b`, case-insensitive).
+- **Citation simplification** lives in ONE place: `backend/textclean.py`
+  (`simplify_citations`). The backend attaches `text_simplified` to each
+  paragraph block on read (`/upload`, `GET /papers/{id}`) — not stored, always
+  recomputed, so rule tweaks apply retroactively. Frontend picks
+  `text_simplified` vs `text` from the `pr-simplify` localStorage toggle
+  (default on) and re-renders via `renderDocument()`. Export passes
+  `simplify_citations` through to `export_text`. Author-year (APA) only;
+  conservative — unmatched parentheticals are left untouched.
 - Reading position / rate / voice prefs are in `localStorage`, not the backend.
 - Paper ids are 12-hex content hashes; `store.py` validates with `_PID_RE`
   before touching paths (path-traversal guard).
