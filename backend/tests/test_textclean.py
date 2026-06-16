@@ -69,3 +69,10 @@ def test_cleans_double_spaces_and_space_before_punctuation():
     assert simplify_citations("Trust mattered (see Table 2) ; loyalty rose.") == (
         "Trust mattered; loyalty rose."
     )
+
+
+def test_cleanup_does_not_weld_decimals():
+    # the (?!\d) guard in _cleanup must leave a spaced decimal alone
+    assert simplify_citations("The value was 3 .5 (Kumar, 2021).") == (
+        "The value was 3 .5 (Kumar)."
+    )

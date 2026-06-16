@@ -83,6 +83,9 @@ def _condense_one(part: str) -> str | None:
 
 
 def _cleanup(text: str) -> str:
+    # Drop the space before stray punctuation left by a removed parenthetical.
+    # The (?!\d) guard avoids welding a decimal back together, e.g. a stat like
+    # "p < .05" must not become "p <.05".
     text = re.sub(r"\s+([.,;:!?])(?!\d)", r"\1", text)
     text = re.sub(r"\(\s+", "(", text)
     text = re.sub(r"\s+\)", ")", text)
