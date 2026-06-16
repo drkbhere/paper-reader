@@ -334,8 +334,8 @@ simplifyToggle.addEventListener("change", () => {
   speechSynthesis.cancel();
   if (state.status === "playing") { state.status = "paused"; updatePlayBtn(); }
   renderDocument();
-  state.segIdx = Math.min(keep, state.segments.length - 1);
-  if (state.segIdx > 0) setLiveSegment(state.segments[state.segIdx]);
+  state.segIdx = Math.max(0, Math.min(keep, state.segments.length - 1));
+  if (state.segments.length) setLiveSegment(state.segments[state.segIdx]);
   updateProgress();
 });
 
