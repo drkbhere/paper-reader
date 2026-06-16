@@ -1,4 +1,5 @@
 from backend.textclean import simplify_citations
+from backend.textclean import annotate_blocks
 
 
 def test_condenses_multi_author_group():
@@ -76,3 +77,15 @@ def test_cleanup_does_not_weld_decimals():
     assert simplify_citations("The value was 3 .5 (Kumar, 2021).") == (
         "The value was 3 .5 (Kumar)."
     )
+
+
+def test_annotate_blocks_adds_simplified_text_for_paragraphs_only():
+    blocks = [
+        {"type": "heading", "text": "Results"},
+        {"type": "paragraph", "text": "Loyalty rose (Kumar, 2021)."},
+    ]
+    out = annotate_blocks(blocks)
+    assert out[0]["text_simplified"] == "Results"          # heading unchanged
+    assert out[1]["text_simplified"] == "Loyalty rose (Kumar)."
+    assert out[1]["text"] == "Loyalty rose (Kumar, 2021)."  # original preserved
+    assert blocks[1] == {"type": "paragraph", "text": "Loyalty rose (Kumar, 2021)."}  # input not mutated

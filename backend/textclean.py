@@ -91,3 +91,16 @@ def _cleanup(text: str) -> str:
     text = re.sub(r"\s+\)", ")", text)
     text = re.sub(r"[ \t]{2,}", " ", text)
     return text.strip()
+
+
+def annotate_blocks(blocks: list[dict]) -> list[dict]:
+    """Return copies of blocks with a `text_simplified` field (paragraphs cleaned,
+    headings passed through). Input blocks are not mutated."""
+    out = []
+    for b in blocks:
+        nb = dict(b)
+        nb["text_simplified"] = (
+            simplify_citations(b["text"]) if b["type"] == "paragraph" else b["text"]
+        )
+        out.append(nb)
+    return out
