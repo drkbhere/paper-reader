@@ -90,6 +90,37 @@ def test_voices_listed():
     assert all("name" in v for v in voices)
 
 
+def citation_pdf():
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_text((72, 100), "A Paper With Citations", fontsize=20)
+    body = ("Loyalty rose strongly over the studied period (Kumar, 2021) "
+            "and the effect held across the whole sample (see Table 2). " * 4)
+    page.insert_text((72, 200), "\n".join(textwrap.wrap(body, 80)), fontsize=11)
+    data = doc.tobytes()
+    doc.close()
+    return data
+
+
+def test_get_paper_includes_simplified_text():
+    pid = client.post("/upload",
+                      files={"file": ("cite.pdf", citation_pdf(), "application/pdf")}).json()["id"]
+    rec = client.get(f"/papers/{pid}").json()
+    paras = [b for b in rec["blocks"] if b["type"] == "paragraph"]
+    joined = " ".join(b["text_simplified"] for b in paras)
+    assert "(Kumar)" in joined
+    assert "(Kumar, 2021)" not in joined
+    assert "Table 2" not in joined
+    assert any("(Kumar, 2021)" in b["text"] for b in paras)  # original preserved
+
+
+def test_upload_response_includes_simplified_text():
+    doc = client.post("/upload",
+                      files={"file": ("cite2.pdf", citation_pdf(), "application/pdf")}).json()
+    paras = [b for b in doc["blocks"] if b["type"] == "paragraph"]
+    assert any("(Kumar)" in b["text_simplified"] for b in paras)
+
+
 @pytest.mark.skipif(not HAS_SAY, reason="macOS say not available")
 def test_export_renders_audio():
     doc = upload("epsilon")

@@ -9,7 +9,7 @@ from fastapi import Body, FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import export
+from . import export, textclean
 from .extractor import EmptyTextError, ExtractionError, extract_pdf
 from .store import PaperStore
 
@@ -48,6 +48,7 @@ async def upload(file: UploadFile = File(...)):
     except ExtractionError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     doc["id"] = store.save(data, doc)
+    doc["blocks"] = textclean.annotate_blocks(doc["blocks"])
     return doc
 
 
@@ -61,6 +62,7 @@ def get_paper(pid: str):
     rec = store.get(pid)
     if rec is None:
         raise HTTPException(status_code=404, detail="Paper not found.")
+    rec["blocks"] = textclean.annotate_blocks(rec["blocks"])
     return rec
 
 
