@@ -48,6 +48,8 @@ async def upload(file: UploadFile = File(...)):
     except ExtractionError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     doc["id"] = store.save(data, doc)
+    # text_simplified is computed on read, never persisted, so rule tweaks apply
+    # retroactively to papers already in the library.
     doc["blocks"] = textclean.annotate_blocks(doc["blocks"])
     return doc
 
@@ -62,7 +64,7 @@ def get_paper(pid: str):
     rec = store.get(pid)
     if rec is None:
         raise HTTPException(status_code=404, detail="Paper not found.")
-    rec["blocks"] = textclean.annotate_blocks(rec["blocks"])
+    rec["blocks"] = textclean.annotate_blocks(rec["blocks"])  # computed on read, not stored
     return rec
 
 
