@@ -79,6 +79,14 @@ def test_cleanup_does_not_weld_decimals():
     )
 
 
+def test_fig_table_strip_does_not_eat_a_following_citation():
+    # a table token leading a group must NOT drop the real citation after the ";"
+    # — leave the whole group untouched rather than lose "Smith, 2020".
+    src = "The result (Table 1; Smith, 2020) was robust."
+    assert simplify_citations(src) == src
+    assert "Smith" in simplify_citations(src)
+
+
 def test_annotate_blocks_adds_simplified_text_for_paragraphs_only():
     blocks = [
         {"type": "heading", "text": "Results"},

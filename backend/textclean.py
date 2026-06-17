@@ -23,9 +23,11 @@ _BARE_YEAR_CONTENT_RE = re.compile(
 )
 
 # Parenthetical figure/table aside: optional lead-ins, then Fig/Figure/Table/Tbl + number.
+# The trailing [^;]* must not cross a ";" — otherwise a group like
+# "(Table 1; Smith, 2020)" would match whole and silently drop the real citation.
 _FIG_TABLE_CONTENT_RE = re.compile(
-    r"^(?:see|cf\.?|e\.g\.?,?|also|and|[,;]|\s)*"
-    r"(?:figs?\.?|figures?|t(?:able|bl)s?\.?)\s*\d.*$",
+    r"^(?:see|cf\.?|e\.g\.?,?|also|and|[,]|\s)*"
+    r"(?:figs?\.?|figures?|t(?:able|bl)s?\.?)\s*\d[^;]*$",
     re.I,
 )
 
