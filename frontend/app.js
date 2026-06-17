@@ -17,6 +17,7 @@ const librarySection = $("librarySection"), libraryList = $("libraryList");
 const docTitle = $("docTitle"), docBody = $("docBody");
 const tocList = $("tocList"), skipRefsToggle = $("skipRefsToggle");
 const simplifyToggle = $("simplifyToggle");
+const skipNonproseToggle = $("skipNonproseToggle");
 const playerBar = $("playerBar"), playBtn = $("playBtn");
 const iconPlay = $("iconPlay"), iconPause = $("iconPause");
 const progressFill = $("progressFill"), progressLabel = $("progressLabel");
@@ -25,6 +26,7 @@ const libraryBtn = $("libraryBtn"), exportBtn = $("exportBtn");
 const exportModal = $("exportModal"), exportVoiceSelect = $("exportVoiceSelect");
 const exportSkipRefs = $("exportSkipRefs"), exportStatus = $("exportStatus");
 const exportSimplify = $("exportSimplify");
+const exportSkipNonprose = $("exportSkipNonprose");
 const exportStartBtn = $("exportStartBtn"), exportCancelBtn = $("exportCancelBtn");
 
 // ---------- state ----------
@@ -38,6 +40,7 @@ const state = {
   voice: null,
   skipRefs: localStorage.getItem("pr-skiprefs") !== "0",
   simplifyCites: localStorage.getItem("pr-simplify") !== "0",
+  skipNonprose: localStorage.getItem("pr-skipnonprose") !== "0",
   blocks: [],       // raw blocks from the API, for re-render on toggle
   gen: 0,           // generation token: invalidates stale utterance callbacks
   lit: [],          // word spans currently highlighted
@@ -239,7 +242,7 @@ function renderDocument() {
       : block.text;
     const sentences = block.type === "heading" ? [source] : splitSentences(source);
     sentences.forEach((sent, i) => {
-      const segEl = buildSegment(sent, inRefs, block.type === "heading");
+      const segEl = buildSegment(sent, inRefs, block.type === "heading", !!block.nonprose);
       el.appendChild(segEl);
       if (i < sentences.length - 1) el.appendChild(document.createTextNode(" "));
     });
@@ -247,6 +250,7 @@ function renderDocument() {
   }
   buildToc();
   applySkipRefs();
+  applySkipNonprose();
 
   localStorage.setItem(totalKey(state.paperId), String(state.segments.length));
   const saved = Number(localStorage.getItem(posKey(state.paperId))) || 0;
@@ -260,9 +264,9 @@ function renderDocument() {
 
 // Build one segment: a <span class="seg"> whose words are individually wrapped
 // so onboundary charIndexes can be mapped to DOM nodes.
-function buildSegment(text, isRef, isHeading) {
+function buildSegment(text, isRef, isHeading, isSkip) {
   const segEl = document.createElement("span");
-  segEl.className = "seg" + (isRef ? " ref" : "");
+  segEl.className = "seg" + (isRef ? " ref" : "") + (isSkip ? " nonprose" : "");
   segEl.dataset.seg = state.segments.length;
 
   const words = [];
@@ -282,7 +286,7 @@ function buildSegment(text, isRef, isHeading) {
   if (isHeading) {
     state.toc.push({ text, segIdx: state.segments.length, el: null });
   }
-  state.segments.push({ text, el: segEl, words, isRef });
+  state.segments.push({ text, el: segEl, words, isRef, isSkip });
   return segEl;
 }
 
@@ -339,12 +343,25 @@ simplifyToggle.addEventListener("change", () => {
   updateProgress();
 });
 
+skipNonproseToggle.checked = state.skipNonprose;
+skipNonproseToggle.addEventListener("change", () => {
+  state.skipNonprose = skipNonproseToggle.checked;
+  localStorage.setItem("pr-skipnonprose", state.skipNonprose ? "1" : "0");
+  applySkipNonprose();
+});
+
 function applySkipRefs() {
   docBody.classList.toggle("skip-refs", state.skipRefs);
 }
 
+function applySkipNonprose() {
+  docBody.classList.toggle("skip-nonprose", state.skipNonprose);
+}
+
 function nextPlayable(i) {
-  while (i < state.segments.length && state.skipRefs && state.segments[i].isRef) i++;
+  while (i < state.segments.length &&
+         ((state.skipRefs && state.segments[i].isRef) ||
+          (state.skipNonprose && state.segments[i].isSkip))) i++;
   return i;
 }
 
@@ -576,6 +593,7 @@ exportBtn.addEventListener("click", async () => {
   exportModal.classList.remove("hidden");
   exportSkipRefs.checked = state.skipRefs;
   exportSimplify.checked = state.simplifyCites;
+  exportSkipNonprose.checked = state.skipNonprose;
   exportStatus.textContent = "";
   if (!exportVoicesLoaded) {
     try {
@@ -617,6 +635,7 @@ exportStartBtn.addEventListener("click", async () => {
         voice,
         skip_references: exportSkipRefs.checked,
         simplify_citations: exportSimplify.checked,
+        skip_nonprose: exportSkipNonprose.checked,
       }),
     });
   } catch {

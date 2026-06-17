@@ -476,6 +476,9 @@ body::before {
 /* dimmed references when skipping */
 .skip-refs .seg.ref { opacity: 0.4; }
 .skip-refs .seg.ref:hover { opacity: 0.75; }
+/* dimmed tables/equations/footnotes/captions when skipping */
+.skip-nonprose .seg.nonprose { opacity: 0.4; }
+.skip-nonprose .seg.nonprose:hover { opacity: 0.75; }
 
 /* ---------- export modal ---------- */
 
