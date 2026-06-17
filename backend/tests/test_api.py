@@ -8,7 +8,7 @@ import fitz
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.export import drop_references, export_text
+from backend.export import drop_nonprose, drop_references, export_text
 from backend.main import app, store
 
 client = TestClient(app)
@@ -151,3 +151,23 @@ def test_export_text_simplifies_citations_when_enabled():
 def test_export_text_keeps_citations_when_disabled():
     blocks = [{"type": "paragraph", "text": "Loyalty rose (Kumar, 2021)."}]
     assert "(Kumar, 2021)" in export_text("T", blocks, simplify=False)
+
+
+def test_drop_nonprose_removes_tagged_blocks():
+    blocks = [
+        {"type": "paragraph", "text": "Real prose."},
+        {"type": "paragraph", "text": "Trust 4.21 Loyalty 3.98", "nonprose": "table"},
+        {"type": "paragraph", "text": "Figure 1. Model.", "nonprose": "caption"},
+    ]
+    kept = drop_nonprose(blocks)
+    assert [b["text"] for b in kept] == ["Real prose."]
+
+
+def test_export_text_omits_nonprose_when_dropped():
+    blocks = [
+        {"type": "paragraph", "text": "Real prose here."},
+        {"type": "paragraph", "text": "Trust 4.21 Loyalty 3.98", "nonprose": "table"},
+    ]
+    text = export_text("T", drop_nonprose(blocks))
+    assert "Real prose here." in text
+    assert "4.21" not in text

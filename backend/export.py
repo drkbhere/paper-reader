@@ -49,6 +49,11 @@ def drop_references(blocks: list[dict]) -> list[dict]:
     return out
 
 
+def drop_nonprose(blocks: list[dict]) -> list[dict]:
+    """Remove blocks tagged as tables/equations/footnotes/captions."""
+    return [b for b in blocks if "nonprose" not in b]
+
+
 def export_text(title: str, blocks: list[dict], simplify: bool = True) -> str:
     parts = [title, PARAGRAPH_PAUSE]
     for b in blocks:
@@ -67,7 +72,7 @@ def job_status(pid: str) -> dict:
 
 def start_export(pid: str, title: str, blocks: list[dict], out_path: Path,
                  voice: str | None = None, skip_references: bool = True,
-                 simplify_citations: bool = True) -> bool:
+                 simplify_citations: bool = True, skip_nonprose: bool = True) -> bool:
     """Kick off a render; returns False if one is already running for this paper."""
     with _lock:
         if _jobs.get(pid, {}).get("status") == "running":
@@ -78,7 +83,9 @@ def start_export(pid: str, title: str, blocks: list[dict], out_path: Path,
         try:
             content = blocks
             if skip_references:
-                content = drop_references(blocks)
+                content = drop_references(content)
+            if skip_nonprose:
+                content = drop_nonprose(content)
             text = export_text(title, content, simplify=simplify_citations)
             with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as tf:
                 tf.write(text)

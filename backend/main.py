@@ -83,7 +83,8 @@ def voices():
 @app.post("/papers/{pid}/export")
 def start_export(pid: str, voice: str | None = Body(None, embed=True),
                  skip_references: bool = Body(True, embed=True),
-                 simplify_citations: bool = Body(True, embed=True)):
+                 simplify_citations: bool = Body(True, embed=True),
+                 skip_nonprose: bool = Body(True, embed=True)):
     rec = store.get(pid)
     if rec is None:
         raise HTTPException(status_code=404, detail="Paper not found.")
@@ -91,7 +92,7 @@ def start_export(pid: str, voice: str | None = Body(None, embed=True),
         raise HTTPException(status_code=400, detail="Unknown voice.")
     started = export.start_export(pid, rec["title"], rec["blocks"],
                                   store.export_path(pid), voice, skip_references,
-                                  simplify_citations)
+                                  simplify_citations, skip_nonprose)
     return {"status": "running" if started else "already-running"}
 
 
