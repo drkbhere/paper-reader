@@ -43,6 +43,66 @@ _SECTION_NAMES_RE = re.compile(
 # so plain numbered list items in prose don't split paragraphs).
 _NUMBERED_HEADING_RE = re.compile(r"^\d{1,2}(\.\d{1,2})*\.?\s+[A-Z\"“(\[].{0,78}$")
 
+# Figure/table caption: starts with "Figure 3.", "Table 2:", "Fig. 1 —".
+# Requires a separator after the number so prose like "Table 2 shows..." is kept.
+_CAPTION_RE = re.compile(
+    r"^(?:figure|fig|table|tbl|exhibit|panel)s?\.?\s*\d+\s*[.:)—–-]",
+    re.I,
+)
+
+# Math-symbol density signal for display equations (no '-'/'/' — too common in prose).
+_MATH_SYMBOL_RE = re.compile(
+    r"[=+×÷±∑∏∫√∞≈≤≥≠∂∇∈∉⊂⊃∀∃<>^]"
+    r"|[αβγδεζηθικλμνξοπρστυφχψω]",
+    re.I,
+)
+_MATH_FONTS = ("cmmi", "cmsy", "cmex", "msam", "msbm", "symbol", "mathjax")
+EQUATION_MAX_CHARS = 200
+
+
+def _center_in_any(bbox, rects):
+    """True if the centre of bbox falls inside any of the given fitz.Rects."""
+    cx = (bbox[0] + bbox[2]) / 2
+    cy = (bbox[1] + bbox[3]) / 2
+    return any(r.x0 <= cx <= r.x1 and r.y0 <= cy <= r.y1 for r in rects)
+
+
+def _is_footnote(block, body_size):
+    """A clearly-smaller-than-body block sitting in the lower part of the page."""
+    if not body_size:
+        return False
+    top = block["bbox"][1]
+    return block["size"] <= body_size - 1.0 and top >= block["page_height"] * 0.70
+
+
+def _is_equation(text, block):
+    """Short, symbol-dense (or math-font) block that reads as a display equation."""
+    if len(text) > EQUATION_MAX_CHARS:
+        return False
+    nonspace = sum(1 for c in text if not c.isspace())
+    if nonspace < 3:
+        return False
+    letter_ratio = sum(1 for c in text if c.isalpha()) / nonspace
+    font = (block.get("font") or "").lower()
+    if any(m in font for m in _MATH_FONTS) and letter_ratio < 0.85:
+        return True
+    return letter_ratio < 0.5 and bool(_MATH_SYMBOL_RE.search(text))
+
+
+def _classify_nonprose(block, text, body_size):
+    """Return 'table'|'caption'|'footnote'|'equation' for non-prose, else None.
+    Priority: table > caption > footnote > equation (most reliable wins)."""
+    if block.get("in_table"):
+        return "table"
+    if _CAPTION_RE.match(text):
+        return "caption"
+    if _is_footnote(block, body_size):
+        return "footnote"
+    if _is_equation(text, block):
+        return "equation"
+    return None
+
+
 
 class ExtractionError(ValueError):
     """The PDF could not be parsed at all."""

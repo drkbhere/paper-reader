@@ -162,3 +162,76 @@ def test_title_is_largest_font_on_first_page():
 
     result = extract_pdf(pdf_bytes(build))
     assert result["title"] == "Price Disparity in Online Reviews"
+
+
+from backend.extractor import (
+    _classify_nonprose, _center_in_any, _is_footnote, _is_equation,
+)
+
+
+def _block(text="", size=11.0, top=300.0, page_height=842.0, font="", in_table=False):
+    return {
+        "text": text, "size": size, "font": font, "in_table": in_table,
+        "bbox": (72.0, top, 500.0, top + 20.0), "page_height": page_height,
+    }
+
+
+def test_center_in_any_inside_and_outside():
+    rects = [fitz.Rect(72, 100, 330, 180)]
+    assert _center_in_any((80, 110, 200, 130), rects) is True
+    assert _center_in_any((80, 400, 200, 420), rects) is False
+
+
+def test_caption_blocks_detected():
+    body = 11.0
+    for text in ("Figure 3. The proposed model.", "Table 2: Means and SDs.",
+                 "Fig. 1 — Overview of the design.", "Exhibit 4. Summary."):
+        assert _classify_nonprose(_block(text=text), text, body) == "caption", text
+
+
+def test_grammatical_table_mention_is_not_a_caption():
+    # "Table 2 shows..." is prose, not a caption — no separator after the number
+    text = "Table 2 shows the means for each condition across the studies."
+    assert _classify_nonprose(_block(text=text), text, 11.0) is None
+
+
+def test_figurative_word_is_not_a_caption():
+    text = "Figurative language pervades the advertising copy we analyzed."
+    assert _classify_nonprose(_block(text=text), text, 11.0) is None
+
+
+def test_footnote_detected_by_small_font_low_on_page():
+    body = 11.0
+    fn = _block(text="1 We thank the editor for helpful comments.", size=8.0, top=770.0)
+    assert _is_footnote(fn, body) is True
+    assert _classify_nonprose(fn, fn["text"], body) == "footnote"
+
+
+def test_small_font_high_on_page_is_not_a_footnote():
+    body = 11.0
+    sup = _block(text="superscript-ish header text", size=8.0, top=90.0)
+    assert _is_footnote(sup, body) is False
+
+
+def test_normal_body_block_is_not_nonprose():
+    body = 11.0
+    text = ("We collected data from 200 participants in 2020 and analyzed three "
+            "conditions using a standard mixed model approach.")
+    assert _classify_nonprose(_block(text=text, size=11.0), text, body) is None
+
+
+def test_equation_detected_by_low_letter_ratio_and_symbols():
+    text = "(1) y = 2x + 3z - 4"
+    assert _is_equation(text, _block(text=text)) is True
+    assert _classify_nonprose(_block(text=text), text, 11.0) == "equation"
+
+
+def test_equation_detected_by_math_font():
+    text = "y = f(x)"
+    assert _is_equation(text, _block(text=text, font="CMMI10")) is True
+
+
+def test_table_flag_takes_priority_over_caption():
+    text = "Table 1. Descriptive statistics"
+    blk = _block(text=text, in_table=True)
+    assert _classify_nonprose(blk, text, 11.0) == "table"
