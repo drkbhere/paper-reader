@@ -103,6 +103,15 @@ def _classify_nonprose(block, text, body_size):
     return None
 
 
+def _find_table_rects(page):
+    """Bounding boxes of real (>=2x2) tables on the page; [] if none/unsupported."""
+    try:
+        finder = page.find_tables()
+    except Exception:
+        return []
+    return [fitz.Rect(t.bbox) for t in finder.tables
+            if t.row_count >= 2 and t.col_count >= 2]
+
 
 class ExtractionError(ValueError):
     """The PDF could not be parsed at all."""
@@ -144,10 +153,12 @@ def _gather_blocks(doc):
     size/boldness so headings buried inside body blocks can be split out."""
     blocks = []
     for page_no, page in enumerate(doc):
+        table_rects = _find_table_rects(page)
         for blk in page.get_text("dict")["blocks"]:
             if blk.get("type") != 0:  # 0 = text, 1 = image
                 continue
             lines, block_sizes, block_bold, block_total = [], [], 0, 0
+            block_fonts = Counter()
             for line in blk["lines"]:
                 text = "".join(span["text"] for span in line["spans"])
                 text = text.replace("­", "").strip()  # soft hyphens
@@ -160,6 +171,7 @@ def _gather_blocks(doc):
                         continue
                     line_sizes.append((round(span["size"], 1), n))
                     line_total += n
+                    block_fonts[span.get("font", "")] += n
                     if span["flags"] & BOLD_FLAG:
                         line_bold += n
                 lines.append({
@@ -180,6 +192,8 @@ def _gather_blocks(doc):
                 "bold": block_total > 0 and block_bold / block_total > 0.6,
                 "page_height": page.rect.height,
                 "page_width": page.rect.width,
+                "font": block_fonts.most_common(1)[0][0] if block_fonts else "",
+                "in_table": _center_in_any(blk["bbox"], table_rects),
             })
     return blocks
 
@@ -359,10 +373,16 @@ def _build_blocks(ordered, body_size):
         text = _join_lines(b["lines"])
         if not text:
             continue
+        tag = _classify_nonprose(b, text, body_size)
+        if tag:
+            blocks.append({"type": "paragraph", "text": text, "nonprose": tag})
+            continue
         if _is_heading(b, text, body_size):
             blocks.append({"type": "heading", "text": text})
             continue
-        if blocks and blocks[-1]["type"] == "paragraph" and _continues(blocks[-1]["text"], text):
+        if (blocks and blocks[-1]["type"] == "paragraph"
+                and "nonprose" not in blocks[-1]
+                and _continues(blocks[-1]["text"], text)):
             prev = blocks[-1]["text"]
             if prev.endswith("-") and text[0].islower():
                 blocks[-1]["text"] = prev[:-1] + text

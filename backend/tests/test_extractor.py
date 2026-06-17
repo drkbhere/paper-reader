@@ -235,3 +235,62 @@ def test_table_flag_takes_priority_over_caption():
     text = "Table 1. Descriptive statistics"
     blk = _block(text=text, in_table=True)
     assert _classify_nonprose(blk, text, 11.0) == "table"
+
+
+def _nonprose_tags(result):
+    return [b.get("nonprose") for b in result["blocks"] if b.get("nonprose")]
+
+
+def test_table_contents_tagged_as_table():
+    def build(doc):
+        page = doc.new_page()
+        page.insert_text((72, 120), wrap(FILLER), fontsize=BODY)
+        # a ruled 2x2 grid further down the page
+        shape = page.new_shape()
+        for x in (72, 220, 360):
+            shape.draw_line((x, 400), (x, 480))
+        for y in (400, 440, 480):
+            shape.draw_line((72, y), (360, y))
+        shape.finish()
+        shape.commit()
+        page.insert_text((90, 425), "Construct"); page.insert_text((240, 425), "Mean")
+        page.insert_text((90, 465), "Trust"); page.insert_text((240, 465), "4.21")
+
+    result = extract_pdf(pdf_bytes(build))
+    assert "table" in _nonprose_tags(result)
+    # the body filler is NOT tagged
+    assert any(b["type"] == "paragraph" and "nonprose" not in b
+               and "ordinary body text" in b["text"] for b in result["blocks"])
+
+
+def test_caption_block_tagged_as_caption():
+    def build(doc):
+        page = doc.new_page()
+        page.insert_text((72, 120), wrap(FILLER), fontsize=BODY)
+        page.insert_text((72, 400), wrap("Figure 1. The proposed mediation model linking trust to loyalty."), fontsize=BODY)
+
+    result = extract_pdf(pdf_bytes(build))
+    cap = [b for b in result["blocks"] if b.get("nonprose") == "caption"]
+    assert cap and cap[0]["text"].startswith("Figure 1.")
+
+
+def test_footnote_block_tagged_as_footnote():
+    def build(doc):
+        page = doc.new_page()
+        page.insert_text((72, 120), wrap(FILLER), fontsize=BODY)
+        page.insert_text((72, 790), wrap("1 We thank the editor and reviewers for their guidance on this work."), fontsize=8)
+
+    result = extract_pdf(pdf_bytes(build))
+    assert "footnote" in _nonprose_tags(result)
+
+
+def test_nonprose_block_is_not_merged_into_following_prose():
+    def build(doc):
+        page = doc.new_page()
+        page.insert_text((72, 120), wrap(FILLER), fontsize=BODY)
+        page.insert_text((72, 400), wrap("Figure 1. The model."), fontsize=BODY)
+        page.insert_text((72, 460), wrap("This following paragraph is ordinary prose that must stay separate."), fontsize=BODY)
+
+    result = extract_pdf(pdf_bytes(build))
+    cap = next(b for b in result["blocks"] if b.get("nonprose") == "caption")
+    assert "ordinary prose that must stay separate" not in cap["text"]
