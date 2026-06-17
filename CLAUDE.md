@@ -64,6 +64,15 @@ Data lives in `~/Library/Application Support/Paper Reader/` (override with
   (default on) and re-renders via `renderDocument()`. Export passes
   `simplify_citations` through to `export_text`. Author-year (APA) only;
   conservative — unmatched parentheticals are left untouched.
+- **Skip non-prose** (tables/equations/footnotes/captions): detected at
+  extraction time in `extractor.py` (`_classify_nonprose` + `_find_table_rects`,
+  using font size, page position, math-symbol density, and PyMuPDF
+  `find_tables()`). Tagged blocks carry a `nonprose` field, persisted in the
+  saved JSON (re-upload to re-extract after detector changes). Conservative:
+  prefers reading junk over dropping prose; equation detection deliberately
+  under-detects. Frontend greys + skips tagged segments via the `pr-skipnonprose`
+  toggle (default on); `nextPlayable` skips them, like references — no re-render.
+  Export drops them via `drop_nonprose` behind the `skip_nonprose` flag.
 - Reading position / rate / voice prefs are in `localStorage`, not the backend.
 - Paper ids are 12-hex content hashes; `store.py` validates with `_PID_RE`
   before touching paths (path-traversal guard).
